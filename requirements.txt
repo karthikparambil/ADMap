@@ -1,0 +1,11 @@
+impacket>=0.11.0
+ldap3>=2.9.1
+rich>=13.7.0
+click>=8.1.7
+dnspython>=2.4.2
+pyasn1>=0.5.1
+pyOpenSSL>=23.3.0
+cryptography>=41.0.7
+six>=1.16.0
+pycparser>=2.21
+cffi>=1.16.0

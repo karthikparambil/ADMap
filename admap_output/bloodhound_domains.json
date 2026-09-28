@@ -1,0 +1,36 @@
+{
+  "data": [
+    {
+      "ObjectIdentifier": "b'\\x01\\x04\\x00\\x00\\x00\\x00\\x00\\x05\\x15\\x00\\x00\\x00)\\xe06u8\\t\\xdf\\xbdP\\xd0\\xa1\\x00'",
+      "Properties": {
+        "name": "THM",
+        "distinguishedname": "DC=thm,DC=local",
+        "domainsid": "b'\\x01\\x04\\x00\\x00\\x00\\x00\\x00\\x05\\x15\\x00\\x00\\x00)\\xe06u8\\t\\xdf\\xbdP\\xd0\\xa1\\x00'",
+        "functionallevel": "7",
+        "whencreated": "20230512072440.0Z"
+      },
+      "Trusts": [],
+      "ChildObjects": [],
+      "Links": [],
+      "Aces": []
+    }
+  ],
+  "meta": {
+    "CollectionMethods": [
+      "Group",
+      "LocalAdmin",
+      "Session",
+      "Trusts",
+      "ACL",
+      "Container",
+      "RDP",
+      "ObjectProps",
+      "DCOM",
+      "SPNTargets"
+    ],
+    "Collected": 1790560448,
+    "CollectorVersion": "ADMap/1.0",
+    "type": "domains",
+    "count": 1
+  }
+}
