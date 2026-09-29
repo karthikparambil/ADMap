@@ -1,15 +1,8 @@
-"""
-Miscellaneous helpers shared by multiple modules.
-"""
-
 import datetime
 import struct
 from typing import Optional
 
 
-# ---------------------------------------------------------------------------
-# Windows / AD type converters
-# ---------------------------------------------------------------------------
 def filetime_to_dt(filetime: int) -> Optional[str]:
     """Convert a Windows FILETIME (100ns ticks since 1601-01-01) to ISO string."""
     if not filetime or filetime in (0, 9223372036854775807):
@@ -39,9 +32,9 @@ def uac_flags(uac: int) -> list:
         0x80000: "TRUSTED_FOR_DELEGATION",
         0x100000: "NOT_DELEGATED",
         0x200000: "USE_DES_KEY_ONLY",
-        0x400000: "DONT_REQ_PREAUTH",       # AS-REP Roastable!
+        0x400000: "DONT_REQ_PREAUTH",
         0x800000: "PASSWORD_EXPIRED",
-        0x1000000: "TRUSTED_TO_AUTH_FOR_DELEGATION",   # Constrained delegation
+        0x1000000: "TRUSTED_TO_AUTH_FOR_DELEGATION",
     }
     return [name for bit, name in flags.items() if uac & bit]
 
@@ -96,9 +89,6 @@ def windows_interval_to_seconds(val: int) -> int:
     return abs(val) // 10_000_000
 
 
-# ---------------------------------------------------------------------------
-# Well-known AD SIDs / RIDs
-# ---------------------------------------------------------------------------
 WELL_KNOWN_SIDS = {
     "S-1-5-21-...-500": "Administrator",
     "S-1-5-21-...-501": "Guest",

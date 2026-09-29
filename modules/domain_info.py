@@ -1,13 +1,3 @@
-"""
-Module 1 — Domain Information
-Enumerates:
-  • Domain name, NetBIOS name, FQDN, SID
-  • Forest root, functional levels
-  • Domain Controllers (primary & backups)
-  • Trust relationships (intra-forest, cross-forest, external)
-  • DNS servers, time server
-"""
-
 from rich.console import Console
 from rich.table import Table
 from rich import box
@@ -73,9 +63,6 @@ def _trust_attributes(val: int) -> list:
     return [label for bit, label in flags.items() if val & bit]
 
 
-# ---------------------------------------------------------------------------
-# Password policy helpers
-# ---------------------------------------------------------------------------
 PWD_PROPERTIES = {
     0x01: "DOMAIN_PASSWORD_COMPLEX",
     0x02: "DOMAIN_PASSWORD_NO_ANON_CHANGE",
@@ -96,7 +83,6 @@ def run(conn: ADConnection):
         "password_policy": {},
     }
 
-    # ------------------------------------------------------------------ domain
     entries = conn.search(
         "(objectClass=domain)",
         DOMAIN_ATTRS,
@@ -109,7 +95,6 @@ def run(conn: ADConnection):
 
     dom = entries[0]
 
-    # Register domain metadata for password generation
     creds.set_domain_meta(
         domain=conn.domain,
         netbios=safe_str(dom["name"]),
@@ -142,7 +127,6 @@ def run(conn: ADConnection):
     tbl = make_table("Domain Details", ["Property", "Value"], list(domain_info.items()))
     console.print(tbl)
 
-    # ------------------------------------------------------------------ password policy
     pwd_policy = {
         "Min Password Length": safe_str(dom["minPwdLength"]) or "0",
         "Password History Length": safe_str(dom["pwdHistoryLength"]) or "0",
@@ -174,7 +158,6 @@ def run(conn: ADConnection):
         print_finding("medium", "Password complexity NOT enforced",
                       "Users may set simple, guessable passwords.")
 
-    # ------------------------------------------------------------------ DCs
     console.print()
     dc_entries = conn.search(
         "(&(objectCategory=computer)(userAccountControl:1.2.840.113556.1.4.803:=8192))",
@@ -202,7 +185,6 @@ def run(conn: ADConnection):
         dc_rows,
     ))
 
-    # ------------------------------------------------------------------ trusts
     console.print()
     trust_entries = conn.search(
         "(objectClass=trustedDomain)",

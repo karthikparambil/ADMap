@@ -49,7 +49,7 @@ def _connect_smb(host: str, domain: str, username: str, password: str,
     elif username:
         smb.login(username, password or "", domain)
     else:
-        smb.login("", "")   # null session
+        smb.login("", "")
     return smb
 
 
@@ -117,7 +117,6 @@ def run(conn: ADConnection, targets: list = None):
 
     result = {"hosts": [], "accessible_shares": [], "writable_shares": [], "interesting_files": []}
 
-    # If no explicit targets, enumerate DC hostnames from LDAP
     if not targets:
         dc_entries = conn.search(
             "(&(objectCategory=computer)(userAccountControl:1.2.840.113556.1.4.803:=8192))",
@@ -129,7 +128,6 @@ def run(conn: ADConnection, targets: list = None):
             if dns:
                 targets.append(dns)
 
-        # Also include the explicitly provided DC
         if conn.dc_host not in targets:
             targets.insert(0, conn.dc_host)
 
@@ -189,18 +187,15 @@ def run(conn: ADConnection, targets: list = None):
                     print_finding("high", f"Writable share: \\\\{host}\\{sname}",
                                   "Non-admin writable shares can be used for payload delivery.")
 
-            # Flag sensitive admin shares accessible
             if readable and sname.lower() in SENSITIVE_SHARES:
                 print_finding("critical", f"Admin share accessible: \\\\{host}\\{sname}",
                               "Implies admin access to this host.")
 
-            # File hunting in readable shares
             if readable and sname.lower() not in ("ipc$",):
                 interesting = _hunt_files(smb, sname)
                 if interesting:
                     result["interesting_files"].extend(interesting)
                     for fpath in interesting:
-                        # Store paths so analysts can review for credentials
                         creds.add_password(f"[FILE] {fpath}", source="smb_file_hunt")
 
         result["hosts"].append(host_result)

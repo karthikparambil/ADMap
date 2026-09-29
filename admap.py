@@ -1,27 +1,3 @@
-"""
-ADMap — Main Entry Point
-A complete Active Directory enumeration tool for authorized penetration testing.
-
-Usage examples:
-  # Basic authenticated scan
-  python admap.py -d corp.local -dc 192.168.1.10 -u jdoe -p 'P@ssw0rd'
-
-  # Pass-the-Hash
-  python admap.py -d corp.local -dc 192.168.1.10 -u jdoe --hash :aad3b435b51404eeaad3b435b51404ee
-
-  # Kerberos (set KRB5CCNAME first)
-  python admap.py -d corp.local -dc dc01.corp.local -u jdoe -k
-
-  # Null session / anonymous
-  python admap.py -d corp.local -dc 192.168.1.10
-
-  # Run only specific modules
-  python admap.py -d corp.local -dc 192.168.1.10 -u jdoe -p 'P@ssw0rd' -m domain,users,kerberoast
-
-  # Export reports
-  python admap.py -d corp.local -dc 192.168.1.10 -u jdoe -p 'P@ssw0rd' --json --html --bloodhound
-"""
-
 import sys
 import os
 import time
@@ -33,7 +9,6 @@ from rich.panel import Panel
 from rich.text import Text
 from rich import box
 
-# Fix import path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from utils.connection import ADConnection
@@ -82,7 +57,6 @@ def _print_main_banner():
 
 
 def _parse_modules(module_str: str) -> list:
-    """Parse comma-separated module names; 'all' returns everything."""
     if not module_str or module_str.lower() == "all":
         return ALL_MODULE_KEYS
     keys = []
@@ -96,7 +70,6 @@ def _parse_modules(module_str: str) -> list:
 
 
 def _run_module(key: str, conn: ADConnection, output_dir: str):
-    """Dynamically import and run a module."""
     _, mod_path = MODULES_AVAILABLE[key]
     import importlib
     mod = importlib.import_module(mod_path)
@@ -108,9 +81,6 @@ def _run_module(key: str, conn: ADConnection, output_dir: str):
         mod.run(conn)
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("-d", "--domain", required=True,
               help="Target AD domain (e.g. corp.local)")
@@ -167,7 +137,6 @@ def main(domain, dc_host, username, password, ntlm_hash, kerberos,
         console.print(tbl)
         return
 
-    # ------------------------------------------------------------------ auth info
     auth_method = "Anonymous"
     if kerberos:
         auth_method = "Kerberos (ccache)"
@@ -181,11 +150,8 @@ def main(domain, dc_host, username, password, ntlm_hash, kerberos,
     proto = "LDAPS" if ssl else "LDAP"
     effective_port = port or (636 if ssl else 389)
 
-    # ------------------------------------------------------------------ output dir
-    # If user didn't override the default, auto-build: ./admap_output/<dc_host>/<domain>/
     import socket as _sock
     if output_dir == "./admap_output":
-        # Resolve hostname → IP for folder name
         try:
             dc_ip_folder = _sock.gethostbyname(dc_host).replace(":", "-")
         except Exception:
@@ -208,7 +174,6 @@ def main(domain, dc_host, username, password, ntlm_hash, kerberos,
         expand=False,
     ))
 
-    # ------------------------------------------------------------------ connect
     conn = ADConnection(
         dc_host=dc_host,
         domain=domain,
@@ -230,10 +195,8 @@ def main(domain, dc_host, username, password, ntlm_hash, kerberos,
 
     print_info(f"Connected successfully — base DN: [bright_yellow]{conn.base_dn}[/bright_yellow]")
 
-    # ------------------------------------------------------------------ module selection
     module_keys = _parse_modules(modules)
 
-    # Inject bloodhound if flag set
     if run_bloodhound and "bloodhound" not in module_keys:
         module_keys.append("bloodhound")
 
@@ -245,7 +208,6 @@ def main(domain, dc_host, username, password, ntlm_hash, kerberos,
         expand=False,
     ))
 
-    # ------------------------------------------------------------------ run modules
     errors = []
     for key in module_keys:
         try:
@@ -258,22 +220,18 @@ def main(domain, dc_host, username, password, ntlm_hash, kerberos,
             print_error(f"Module '{key}' failed: {e}")
             errors.append((key, str(e)))
 
-    # ------------------------------------------------------------------ cleanup
     conn.disconnect()
 
-    # ------------------------------------------------------------------ exports
     os.makedirs(output_dir, exist_ok=True)
     if export_json_flag:
         export_json(output_dir)
     if export_html_flag:
         export_html(output_dir)
 
-    # ------------------------------------------------------------------ credential / wordlist dump
     console.print()
     console.rule("[bold bright_magenta]Credential & Wordlist Output[/bold bright_magenta]")
     creds.flush_to_disk(output_dir)
 
-    # ------------------------------------------------------------------ summary
     elapsed = time.time() - start_time
     abs_out = os.path.abspath(output_dir)
     console.print()

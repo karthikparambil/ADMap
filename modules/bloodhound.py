@@ -1,14 +1,3 @@
-"""
-Module 9 — BloodHound Data Collection
-Generates BloodHound-compatible JSON files for ingestion:
-  • computers.json
-  • users.json
-  • groups.json
-  • domains.json
-  • gpos.json
-(Subset of official SharpHound / BloodHound.py schema)
-"""
-
 import json
 import datetime
 import uuid
@@ -44,7 +33,6 @@ def run(conn: ADConnection, output_dir: str = "."):
         "CollectorVersion": "ADMap/1.0",
     }
 
-    # ------------------------------------------------------------------ domains
     dom_entries = conn.search("(objectClass=domain)",
                               ["distinguishedName", "name", "objectSid",
                                "msDS-Behavior-Version", "whenCreated"])
@@ -67,7 +55,6 @@ def run(conn: ADConnection, output_dir: str = "."):
         })
     _write_bh(output_dir, "domains", domains_out, meta_base)
 
-    # ------------------------------------------------------------------ users
     user_entries = conn.search(
         "(&(objectCategory=person)(objectClass=user))",
         ["sAMAccountName", "userPrincipalName", "distinguishedName",
@@ -107,7 +94,6 @@ def run(conn: ADConnection, output_dir: str = "."):
         })
     _write_bh(output_dir, "users", users_out, meta_base)
 
-    # ------------------------------------------------------------------ groups
     group_entries = conn.search(
         "(objectClass=group)",
         ["sAMAccountName", "distinguishedName", "objectSid",
@@ -131,7 +117,6 @@ def run(conn: ADConnection, output_dir: str = "."):
         })
     _write_bh(output_dir, "groups", groups_out, meta_base)
 
-    # ------------------------------------------------------------------ computers
     comp_entries = conn.search(
         "(objectClass=computer)",
         ["name", "dNSHostName", "distinguishedName", "objectSid",

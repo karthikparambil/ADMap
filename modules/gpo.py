@@ -1,12 +1,3 @@
-"""
-Module 4 — Group Policy Objects (GPO)
-Enumerates:
-  • All GPOs (name, GUID, version, whenChanged)
-  • GPO links and their enforced / disabled status
-  • Interesting GPO settings: restricted groups, logon scripts, AppLocker
-  • GPO permission misconfigurations (writable by non-admins)
-"""
-
 from rich.console import Console
 
 from utils.connection import ADConnection
@@ -53,7 +44,6 @@ def run(conn: ADConnection):
 
     result = {"gpos": [], "links": [], "issues": []}
 
-    # ------------------------------------------------------------------ fetch GPOs
     gpo_entries = conn.search(
         "(objectClass=groupPolicyContainer)",
         GPO_ATTRS,
@@ -63,7 +53,7 @@ def run(conn: ADConnection):
     print_info(f"Total GPOs found: {len(gpo_entries)}")
 
     gpo_rows = []
-    gpo_map = {}   # GUID -> display name
+    gpo_map = {}
 
     for g in gpo_entries:
         name = safe_str(g["displayName"])
@@ -86,7 +76,6 @@ def run(conn: ADConnection):
         result["gpos"].append(gdict)
         gpo_map[guid.upper()] = name
 
-        # Flag interesting GPO names
         interesting_keywords = ["logon", "script", "password", "disable", "restrict", "applocker",
                                  "firewall", "rdp", "remote", "uac", "smb", "wsus"]
         if any(k in name.lower() for k in interesting_keywords):
@@ -98,14 +87,12 @@ def run(conn: ADConnection):
         gpo_rows,
     ))
 
-    # ------------------------------------------------------------------ GPO links (OUs)
     console.print()
     ou_entries = conn.search(
         "(objectClass=organizationalUnit)",
         OU_ATTRS,
     )
 
-    # Also check the domain object itself for gpLink
     dom_entries = conn.search(
         "(objectClass=domain)",
         ["distinguishedName", "gpLink", "gpOptions"],
@@ -132,10 +119,6 @@ def run(conn: ADConnection):
     else:
         print_info("No OU-level GPO links retrieved.")
 
-    # ------------------------------------------------------------------ writable GPOs (ACL check)
-    # Check if non-admin users have write access to GPO objects
-    # We look for GenericWrite / WriteDacl / WriteOwner on GPO objects
-    # This requires parsing nTSecurityDescriptor (binary ACL) via impacket
     console.print()
     print_info("ACL analysis of GPOs requires elevated permissions — see ACL module for full analysis.")
 

@@ -1,13 +1,3 @@
-"""
-Module 3 — Computers & Hosts
-Enumerates:
-  • All computer accounts (workstations, servers, DCs)
-  • Operating system breakdown
-  • Stale / inactive computers
-  • Computers with delegation configured
-  • LAPS status (ms-Mcs-AdmPwd attribute readable?)
-"""
-
 from rich.console import Console
 from collections import Counter
 
@@ -23,13 +13,12 @@ COMPUTER_ATTRS = [
     "name", "dNSHostName", "operatingSystem", "operatingSystemVersion",
     "operatingSystemServicePack", "userAccountControl", "lastLogon",
     "lastLogonTimestamp", "whenCreated", "objectSid", "description",
-    "ms-Mcs-AdmPwd",                      # LAPS
-    "ms-Mcs-AdmPwdExpirationTime",        # LAPS expiry
+    "ms-Mcs-AdmPwd",
+    "ms-Mcs-AdmPwdExpirationTime",
     "servicePrincipalName",
-    "msDS-AllowedToActOnBehalfOfOtherIdentity",   # RBCD
+    "msDS-AllowedToActOnBehalfOfOtherIdentity",
 ]
 
-# Days without logon before considered stale
 STALE_THRESHOLD_DAYS = 90
 
 
@@ -72,7 +61,6 @@ def run(conn: ADConnection):
 
         enabled = "✔" if not (uac_val & 0x0002) else "✘"
 
-        # Stale check (>90 days since last logon)
         is_stale = False
         if ll_raw:
             try:
@@ -83,11 +71,10 @@ def run(conn: ADConnection):
             except Exception:
                 pass
         elif enabled == "✔":
-            is_stale = True   # enabled but never logged in
+            is_stale = True
 
         stale_mark = "⚠" if is_stale else ""
 
-        # Delegation
         deleg = []
         if "TRUSTED_FOR_DELEGATION" in flags:
             deleg.append("Unconstrained")
@@ -99,16 +86,13 @@ def run(conn: ADConnection):
 
         deleg_str = ", ".join(deleg) if deleg else ""
 
-        # LAPS
         laps_pwd = safe_str(c["ms-Mcs-AdmPwd"])
         laps_mark = ""
         if laps_pwd:
             laps_mark = f"★ {laps_pwd}"
             laps_readable.append({"computer": name, "password": laps_pwd})
-            # Register LAPS credential: local admin password for this host
             creds.add_credential(f"Administrator@{name}", laps_pwd, source="LAPS")
 
-        # Register computer account (machine$)
         creds.add_machine_account(name + "$")
 
         rows.append([name, dns or name, os_name, os_ver, enabled, last_logon_str,
@@ -131,7 +115,6 @@ def run(conn: ADConnection):
         if laps_readable:
             result["laps_readable"] = laps_readable
 
-    # ------------------------------------------------------------------ print table
     display = rows[:100]
     suffix = f" (top 100 of {len(rows)})" if len(rows) > 100 else ""
     console.print(make_table(
@@ -140,7 +123,6 @@ def run(conn: ADConnection):
         display,
     ))
 
-    # ------------------------------------------------------------------ OS breakdown
     if os_counter:
         console.print()
         console.print(make_table(
@@ -150,20 +132,17 @@ def run(conn: ADConnection):
         ))
         result["os_breakdown"] = dict(os_counter)
 
-        # Flag EOL systems
         eol_keywords = ["Windows XP", "Windows 7", "Windows 8", "2003", "2008", "Vista"]
         for os_name, count in os_counter.items():
             if any(k.lower() in os_name.lower() for k in eol_keywords):
                 print_finding("high", f"End-of-Life OS detected: {os_name} ({count} hosts)",
                               "EOL systems receive no security patches — prime targets.")
 
-    # ------------------------------------------------------------------ stale
     if stale:
         console.print()
         print_finding("medium", f"{len(result['stale_computers'])} stale computer account(s)",
                       f"No logon for >{STALE_THRESHOLD_DAYS} days — may indicate orphaned accounts.")
 
-    # ------------------------------------------------------------------ delegation
     if delegation_issues:
         console.print()
         console.print(make_table(
@@ -176,7 +155,6 @@ def run(conn: ADConnection):
             print_finding("critical", f"Unconstrained delegation on {len(unc)} computer(s)",
                           "Any Kerberos auth to these hosts leaks TGTs (Printer Bug / SpoolSample).")
 
-    # ------------------------------------------------------------------ LAPS
     if laps_readable:
         console.print()
         console.print(make_table(

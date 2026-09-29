@@ -1,12 +1,3 @@
-"""
-Module 2 — Users & Groups
-Enumerates:
-  • All domain users (SAMAccountName, UPN, last logon, enabled, admin)
-  • Privileged / high-value groups and their members
-  • Admin users (member of Domain Admins / Enterprise Admins / Schema Admins)
-  • Interesting account flags (no preauth, no expiry, disabled, etc.)
-"""
-
 from rich.console import Console
 
 from utils.connection import ADConnection
@@ -27,7 +18,6 @@ USER_ATTRS = [
     "msDS-SupportedEncryptionTypes",
 ]
 
-# Regex patterns that suggest a password is embedded in a description
 _PASS_PATTERN = __import__('re').compile(
     r'(?:pass(?:word)?|pwd|cred(?:ential)?|secret|key)\s*[=:@]?\s*([\S]{4,})',
     __import__('re').IGNORECASE,
@@ -63,7 +53,6 @@ def run(conn: ADConnection):
         "interesting_accounts": [],
     }
 
-    # ------------------------------------------------------------------ users
     user_entries = conn.search(
         "(&(objectCategory=person)(objectClass=user))",
         USER_ATTRS,
@@ -91,10 +80,8 @@ def run(conn: ADConnection):
         last_logon_str = filetime_to_dt(int(ll)) if ll else "Never"
         pwd_set_str = filetime_to_dt(int(pwd_set)) if pwd_set else "Never"
 
-        # ---- Register into credential store ----
         creds.add_username(sam, upn=upn, display=display)
 
-        # Scan description field for embedded passwords
         desc = safe_str(u["description"])
         if desc:
             m = _PASS_PATTERN.search(desc)
@@ -113,15 +100,12 @@ def run(conn: ADConnection):
         }
         result["users"].append(udict)
 
-        # Kerberoastable: has SPN and is a user (not computer) account
         if spns and "WORKSTATION_TRUST_ACCOUNT" not in flags and "SERVER_TRUST_ACCOUNT" not in flags:
             kerberoastable.append((sam, list(spns)))
 
-        # AS-REP Roastable: DONT_REQ_PREAUTH set
         if "DONT_REQ_PREAUTH" in flags:
             asreproastable.append(sam)
 
-        # Interesting flags
         flag_notes = []
         if "DONT_EXPIRE_PASSWORD" in flags:
             flag_notes.append("Password never expires")
@@ -139,7 +123,6 @@ def run(conn: ADConnection):
         if admin == "★":
             result["privileged_users"].append(udict)
 
-    # Display first 50 users to avoid screen flood; full data in export
     display_rows = user_rows[:50]
     suffix = f" (showing first 50 of {len(user_rows)})" if len(user_rows) > 50 else ""
     console.print(make_table(
@@ -148,7 +131,6 @@ def run(conn: ADConnection):
         display_rows,
     ))
 
-    # ------------------------------------------------------------------ findings
     if kerberoastable:
         console.print()
         k_rows = [[sam, "\n".join(spns)] for sam, spns in kerberoastable]
@@ -184,7 +166,6 @@ def run(conn: ADConnection):
                 print_finding("critical", f"Unconstrained delegation on {acc}",
                               "Any user authenticating to this account leaks their TGT.")
 
-    # ------------------------------------------------------------------ groups
     console.print()
     group_entries = conn.search(
         "(objectClass=group)",
@@ -216,7 +197,6 @@ def run(conn: ADConnection):
         group_rows,
     ))
 
-    # Print high-value group membership
     if result["high_value_groups"]:
         console.print()
         print_section("High-Value Group Membership")

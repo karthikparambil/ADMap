@@ -1,11 +1,3 @@
-"""
-Module 8 — Sessions & Logged-On Users
-  • Queries NetSessionEnum (SMB) for active sessions on DCs
-  • Queries NetWkstaUserEnum for locally logged-on users
-  • Maps users to machines for lateral movement paths
-  • Identifies high-value sessions (Domain Admins on workstations)
-"""
-
 import socket
 from rich.console import Console
 
@@ -63,7 +55,7 @@ def _enum_sessions(host: str, domain: str, username: str, password: str,
             if user and not user.startswith("ANONYMOUS"):
                 sessions.append({"user": user, "client": client, "idle_sec": idle})
     except Exception as e:
-        pass  # Host might not allow session enum
+        pass
     return sessions
 
 
@@ -91,7 +83,6 @@ def run(conn: ADConnection):
 
     result = {"sessions": [], "logged_on": [], "high_value_sessions": []}
 
-    # Get all computers to scan
     targets = []
     entries = conn.search(
         "(&(objectCategory=computer)(userAccountControl:1.2.840.113556.1.4.803:=8192))",
@@ -104,7 +95,6 @@ def run(conn: ADConnection):
     if conn.dc_host not in targets:
         targets.insert(0, conn.dc_host)
 
-    # Get privileged users for cross-reference
     priv_entries = conn.search(
         "(&(objectCategory=person)(objectClass=user)(adminCount=1))",
         ["sAMAccountName"],
@@ -122,7 +112,6 @@ def run(conn: ADConnection):
         except Exception:
             ip = host
 
-        # Sessions
         sessions = _enum_sessions(ip, conn.domain, conn.username,
                                    conn.password, conn.ntlm_hash, conn.use_kerberos)
         for s in sessions:
@@ -137,7 +126,6 @@ def run(conn: ADConnection):
                 print_finding("critical", f"Privileged user session: {user} on {host}",
                               "Admin logged into this machine — potential credential harvest target.")
 
-        # Logged-on users
         logged_on = _enum_logged_on(ip, conn.domain, conn.username,
                                      conn.password, conn.ntlm_hash, conn.use_kerberos)
         for u in logged_on:

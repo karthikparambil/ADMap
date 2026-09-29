@@ -1,10 +1,3 @@
-"""
-Output / Reporting Helpers
-Provides:
-  - Rich pretty-printers (tables, panels, trees)
-  - JSON / CSV / HTML export
-"""
-
 import json
 import csv
 import os
@@ -20,12 +13,9 @@ from rich.tree import Tree
 from rich import box
 
 console = Console()
-_report_data: Dict[str, Any] = {}   # accumulate across modules
+_report_data: Dict[str, Any] = {}
 
 
-# ---------------------------------------------------------------------------
-# Section heading
-# ---------------------------------------------------------------------------
 def print_banner(title: str, subtitle: str = ""):
     console.print()
     console.print(Panel(
@@ -62,9 +52,6 @@ def print_finding(severity: str, title: str, detail: str = ""):
         console.print(f"         [dim]{detail}[/dim]")
 
 
-# ---------------------------------------------------------------------------
-# Generic rich table helper
-# ---------------------------------------------------------------------------
 def make_table(title: str, columns: List[str], rows: List[List[str]],
                highlight_col: int = None) -> Table:
     tbl = Table(title=title, box=box.ROUNDED, border_style="bright_blue",
@@ -77,9 +64,6 @@ def make_table(title: str, columns: List[str], rows: List[List[str]],
     return tbl
 
 
-# ---------------------------------------------------------------------------
-# Accumulate & export
-# ---------------------------------------------------------------------------
 def register_result(module: str, data: Any):
     """Store module results for later export."""
     _report_data[module] = data

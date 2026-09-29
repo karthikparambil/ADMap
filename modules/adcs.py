@@ -1,24 +1,3 @@
-"""
-Module 10 — Active Directory Certificate Services (AD CS) Enumeration
-Detects ESC1-ESC8+ misconfigurations from "Certified Pre-Owned" research.
-
-Checks:
-  ESC1  — Template allows SAN + Client Auth + low-priv enrollment
-  ESC2  — Template with Any Purpose / SubCA EKU
-  ESC3  — Certificate Request Agent EKU (enrollment agent abuse)
-  ESC4  — Dangerous ACEs on template objects (WritePKINameFlag etc.)
-  ESC6  — CA flag EDITF_ATTRIBUTESUBJECTALTNAME2 set (any cert gets SAN)
-  ESC7  — Non-admin has ManageCA / ManageCertificates on CA
-  ESC8  — HTTP-based Web Enrollment endpoint accessible (NTLM relay target)
-  ESC9  — No security extension (szOID_NTDS_CA_SECURITY_EXT) on cert
-  ESC13 — Template linked to group issuance policy (group privilege escalation)
-
-Also enumerates:
-  • All Enterprise CAs (name, host, certificate info, web enrollment URLs)
-  • All published certificate templates (EKUs, flags, enrollment rights)
-  • NTAuthCertificates store
-"""
-
 import struct
 import socket
 import datetime
@@ -34,17 +13,14 @@ from utils.helpers import safe_str, sid_to_str
 
 console = Console()
 
-# ---------------------------------------------------------------------------
-# OID Constants
-# ---------------------------------------------------------------------------
 EKU_NAMES = {
     "1.3.6.1.5.5.7.3.1":       "Server Authentication",
-    "1.3.6.1.5.5.7.3.2":       "Client Authentication",       # ← key for ESC1
+    "1.3.6.1.5.5.7.3.2":       "Client Authentication",
     "1.3.6.1.5.5.7.3.3":       "Code Signing",
     "1.3.6.1.5.5.7.3.4":       "Email Protection",
     "1.3.6.1.5.5.7.3.8":       "Time Stamping",
     "1.3.6.1.5.5.7.3.9":       "OCSP Signing",
-    "1.3.6.1.4.1.311.20.2.1":  "Certificate Request Agent",   # ESC3
+    "1.3.6.1.4.1.311.20.2.1":  "Certificate Request Agent",
     "1.3.6.1.4.1.311.20.2.2":  "Smart Card Logon",
     "1.3.6.1.4.1.311.76.6.1":  "Windows Update",
     "1.3.6.1.4.1.311.10.3.4":  "Encrypting File System",
@@ -52,27 +28,24 @@ EKU_NAMES = {
     "1.3.6.1.4.1.311.10.3.11": "Key Recovery",
     "1.3.6.1.4.1.311.21.5":    "CA Encryption Certificate",
     "1.3.6.1.4.1.311.21.6":    "Key Recovery Agent",
-    "2.5.29.37.0":              "Any Purpose",                 # ESC2
+    "2.5.29.37.0":              "Any Purpose",
     "1.3.6.1.4.1.311.64.1.1":  "Server Trust",
 }
 
 CLIENT_AUTH_EKUS = {
-    "1.3.6.1.5.5.7.3.2",       # Client Authentication
-    "1.3.6.1.4.1.311.20.2.2",  # Smart Card Logon
-    "1.3.6.1.5.2.3.4",         # PKINIT Client Authentication
-    "2.5.29.37.0",              # Any Purpose
+    "1.3.6.1.5.5.7.3.2",
+    "1.3.6.1.4.1.311.20.2.2",
+    "1.3.6.1.5.2.3.4",
+    "2.5.29.37.0",
 }
 
 ANY_PURPOSE_EKUS = {
-    "2.5.29.37.0",              # Any Purpose
+    "2.5.29.37.0",
 }
 
 CERT_REQUEST_AGENT_EKU = "1.3.6.1.4.1.311.20.2.1"
 
-# ---------------------------------------------------------------------------
-# msPKI-Certificate-Name-Flag bits
-# ---------------------------------------------------------------------------
-CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT           = 0x00000001   # ESC1 key flag
+CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT           = 0x00000001
 CT_FLAG_ADD_EMAIL                           = 0x00000002
 CT_FLAG_ADD_OBJ_GUID                        = 0x00000004
 CT_FLAG_OLD_CERT_SUPPLIES_SUBJECT_AND_ALT   = 0x00000008
@@ -87,18 +60,15 @@ CT_FLAG_SUBJECT_REQUIRE_EMAIL               = 0x20000000
 CT_FLAG_SUBJECT_REQUIRE_COMMON_NAME         = 0x40000000
 CT_FLAG_SUBJECT_REQUIRE_DIRECTORY_PATH      = 0x80000000
 
-# ---------------------------------------------------------------------------
-# msPKI-Enrollment-Flag bits
-# ---------------------------------------------------------------------------
 CT_FLAG_INCLUDE_SYMMETRIC_ALGORITHMS        = 0x00000001
-CT_FLAG_PEND_ALL_REQUESTS                   = 0x00000002   # Manager approval required
+CT_FLAG_PEND_ALL_REQUESTS                   = 0x00000002
 CT_FLAG_PUBLISH_TO_KRA_CONTAINER            = 0x00000004
 CT_FLAG_PUBLISH_TO_DS                       = 0x00000008
 CT_FLAG_AUTO_ENROLLMENT_CHECK_USER_DS_CERT  = 0x00000010
 CT_FLAG_AUTO_ENROLLMENT                     = 0x00000020
 CT_FLAG_CT_FLAG_DOMAIN_AUTHENTICATION_NOT_REQUIRED = 0x80
 CT_FLAG_USER_INTERACTION_REQUIRED           = 0x00000100
-CT_FLAG_ADD_TEMPLATE_CERT_ISSUANCE_POLICIES = 0x00000200   # ESC13
+CT_FLAG_ADD_TEMPLATE_CERT_ISSUANCE_POLICIES = 0x00000200
 CT_FLAG_REMOVE_INVALID_CERTIFICATE_FROM_PERSONAL_STORE = 0x00000400
 CT_FLAG_ALLOW_ENROLL_ON_BEHALF_OF           = 0x00000800
 CT_FLAG_INCLUDE_BASIC_CONSTRAINTS_FOR_EE_CERTS = 0x00002000
@@ -106,21 +76,12 @@ CT_FLAG_PREVIOUS_APPROVAL_VALIDATE_REENROLLMENT = 0x00004000
 CT_FLAG_NO_REVOCATION_INFO_IN_CERTS         = 0x01000000
 CT_FLAG_SET_THIS_DELTA_CRL_LOCATION         = 0x00800000
 
-# ---------------------------------------------------------------------------
-# CA flags
-# ---------------------------------------------------------------------------
-EDITF_ATTRIBUTESUBJECTALTNAME2 = 0x00040000   # ESC6 — CA level flag
+EDITF_ATTRIBUTESUBJECTALTNAME2 = 0x00040000
 
-# ---------------------------------------------------------------------------
-# CA rights (for ESC7)
-# ---------------------------------------------------------------------------
-CA_ACCESS_OFFICER        = 0x200   # ManageCertificates (Issue/Deny)
-CA_ACCESS_MANAGER        = 0x400   # ManageCA (full control)
+CA_ACCESS_OFFICER        = 0x200
+CA_ACCESS_MANAGER        = 0x400
 ENROLL_RIGHT             = 0x00000100
 
-# ---------------------------------------------------------------------------
-# LDAP attribute lists
-# ---------------------------------------------------------------------------
 CA_ATTRS = [
     "name", "dNSHostName", "cACertificate", "certificateTemplates",
     "msPKI-Enrollment-Servers", "flags", "cAType",
@@ -146,15 +107,12 @@ DANGEROUS_TEMPLATE_RIGHTS = {
     0x00000008: "WriteProperty",
 }
 
-# Specific extended rights on templates
 TEMPLATE_WRITE_PROPERTY_GUIDS = {
     "0e10c968-78fb-11d2-90d4-00c04f79dc55": "Certificate-Enrollment",
     "a05b8cc2-17bc-4802-a710-e7c15ab866a2": "Certificate-AutoEnrollment",
 }
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+
 def _get_config_nc(conn: ADConnection) -> str:
     """Derive the Configuration Naming Context from the base DN."""
     if conn.server_info and hasattr(conn.server_info, "other"):
@@ -190,7 +148,7 @@ def _parse_enrollment_flags(val: int) -> List[str]:
     if val & CT_FLAG_AUTO_ENROLLMENT:
         flags.append("AUTO_ENROLLMENT")
     if val & CT_FLAG_ADD_TEMPLATE_CERT_ISSUANCE_POLICIES:
-        flags.append("ISSUANCE_POLICY_LINKED")            # ESC13
+        flags.append("ISSUANCE_POLICY_LINKED")
     return flags
 
 
@@ -229,7 +187,6 @@ def _check_web_enrollment(ca_host: str) -> Tuple[bool, List[str]]:
             urls.append(url)
             reachable = True
         except Exception as ex:
-            # 401 Unauthorized still means the service is there
             if hasattr(ex, "code") and ex.code in (401, 403, 200):
                 urls.append(url)
                 reachable = True
@@ -254,7 +211,6 @@ def _parse_template_acl(acl_data, template_name: str, domain_sid: str) -> List[D
             sid_str = ace["Ace"]["Sid"].formatCanonical()
             mask = ace["Ace"]["Mask"]["Mask"]
 
-            # Skip well-known admin SIDs
             skip_sids = {"S-1-5-18", "S-1-5-32-544", "S-1-5-9"}
             if any(sid_str.startswith(s) for s in skip_sids):
                 continue
@@ -273,7 +229,6 @@ def _parse_template_acl(acl_data, template_name: str, domain_sid: str) -> List[D
                     })
                     break
 
-            # Check Enrollment right (0x100 extended right)
             if mask & 0x100 and ace_type == 0x05:
                 findings.append({
                     "template": template_name,
@@ -286,9 +241,6 @@ def _parse_template_acl(acl_data, template_name: str, domain_sid: str) -> List[D
     return findings
 
 
-# ---------------------------------------------------------------------------
-# Main runner
-# ---------------------------------------------------------------------------
 def run(conn: ADConnection, output_dir: str = "."):
     print_section("AD Certificate Services (AD CS) Enumeration")
 
@@ -303,16 +255,12 @@ def run(conn: ADConnection, output_dir: str = "."):
     config_nc  = _get_config_nc(conn)
     pki_base   = _pki_base(config_nc)
 
-    # Determine domain SID for ACL checks
     dom_entries = conn.search("(objectClass=domain)", ["objectSid"])
     domain_sid = ""
     if dom_entries:
         raw_sid = safe_str(dom_entries[0]["objectSid"])
         domain_sid = "-".join(raw_sid.split("-")[:-1]) if raw_sid else ""
 
-    # ==================================================================
-    # 1. Enterprise Certificate Authorities
-    # ==================================================================
     ca_base = f"CN=Enrollment Services,{pki_base}"
     ca_entries = conn.search(
         "(objectClass=pKIEnrollmentService)",
@@ -335,7 +283,6 @@ def run(conn: ADConnection, output_dir: str = "."):
         cert_raw = ca["cACertificate"].raw_values if ca["cACertificate"] else []
         created  = safe_str(ca["whenCreated"])
 
-        # Parse CA certificate
         cert_info = _cert_validity(cert_raw) if cert_raw else "(no cert data)"
 
         ca_rows.append([ca_name, ca_dns, str(len(templates_published)), created])
@@ -348,7 +295,6 @@ def run(conn: ADConnection, output_dir: str = "."):
         }
         result["certificate_authorities"].append(ca_dict)
 
-        # ESC6: EDITF_ATTRIBUTESUBJECTALTNAME2
         if ca_flags & EDITF_ATTRIBUTESUBJECTALTNAME2:
             finding = {
                 "type": "ESC6",
@@ -365,7 +311,6 @@ def run(conn: ADConnection, output_dir: str = "."):
             print_finding("critical", f"ESC6 on CA [{ca_name}]",
                           "EDITF_ATTRIBUTESUBJECTALTNAME2 set — arbitrary SAN on any request.")
 
-        # ESC8: Web Enrollment
         if ca_dns:
             reachable, urls = _check_web_enrollment(ca_dns)
             if reachable:
@@ -386,7 +331,6 @@ def run(conn: ADConnection, output_dir: str = "."):
                     print_finding("high", f"ESC8 — Web Enrollment reachable: {url}",
                                   "NTLM relay to certsrv → obtain machine cert → PKINITtools / Pass-the-Certificate")
 
-        # ESC7: CA Permissions (ManageCA / ManageCertificates for low-priv users)
         acl_raw = ca["nTSecurityDescriptor"].raw_values if ca["nTSecurityDescriptor"] else []
         if acl_raw:
             esc7_findings = _check_ca_acl(acl_raw[0], ca_name, domain_sid)
@@ -401,16 +345,12 @@ def run(conn: ADConnection, output_dir: str = "."):
             ca_rows,
         ))
 
-        # Cert detail table
         console.print()
         cert_rows = []
         for ca_dict in result["certificate_authorities"]:
             cert_rows.append([ca_dict["name"], ca_dict["certificate"]])
         console.print(make_table("CA Certificate Details", ["CA Name", "Certificate Info"], cert_rows))
 
-    # ==================================================================
-    # 2. Certificate Templates
-    # ==================================================================
     console.print()
     template_base = f"CN=Certificate Templates,{pki_base}"
     template_entries = conn.search(
@@ -436,7 +376,6 @@ def run(conn: ADConnection, output_dir: str = "."):
         name_flag_raw = int(safe_str(t["msPKI-Certificate-Name-Flag"]) or "0")
         enroll_flag_raw = int(safe_str(t["msPKI-Enrollment-Flag"]) or "0")
 
-        # Collect EKUs from both attributes
         ekus_raw: List[str] = []
         if t["pKIExtendedKeyUsage"]:
             ekus_raw.extend(t["pKIExtendedKeyUsage"].values or [])
@@ -467,9 +406,7 @@ def run(conn: ADConnection, output_dir: str = "."):
         }
         result["templates"].append(t_dict)
 
-        # -------------------------------- ESC1
-        # Conditions: client auth EKU + ENROLLEE_SUPPLIES_SUBJECT + no manager approval
-        has_client_auth = bool(CLIENT_AUTH_EKUS & set(ekus_raw)) or not ekus_raw  # no EKU = any purpose
+        has_client_auth = bool(CLIENT_AUTH_EKUS & set(ekus_raw)) or not ekus_raw
         has_san_flag    = bool(name_flag_raw & CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT)
 
         if has_client_auth and has_san_flag and not has_manager_approval and t_ra_sigs == 0:
@@ -489,8 +426,6 @@ def run(conn: ADConnection, output_dir: str = "."):
             print_finding("critical", f"ESC1 — {t_display}",
                           f"SAN by requestor + Client Auth EKU → impersonate any user.")
 
-        # -------------------------------- ESC2
-        # Any Purpose EKU or no EKU restriction at all
         has_any_purpose = bool(ANY_PURPOSE_EKUS & set(ekus_raw)) or (not ekus_raw and not has_san_flag)
         if has_any_purpose and not has_manager_approval and t_ra_sigs == 0:
             finding = {
@@ -509,8 +444,6 @@ def run(conn: ADConnection, output_dir: str = "."):
             print_finding("high", f"ESC2 — {t_display}",
                           "Any Purpose EKU → certificate usable for anything.")
 
-        # -------------------------------- ESC3
-        # Certificate Request Agent EKU (enrollment agent)
         if CERT_REQUEST_AGENT_EKU in ekus_raw and not has_manager_approval and t_ra_sigs == 0:
             finding = {
                 "type": "ESC3",
@@ -528,8 +461,6 @@ def run(conn: ADConnection, output_dir: str = "."):
             print_finding("high", f"ESC3 — {t_display}",
                           "Enrollment Agent EKU → request certs on behalf of any user.")
 
-        # -------------------------------- ESC9
-        # Schema version >= 2 but no security extension (CT_FLAG_NO_SECURITY_EXTENSION)
         CT_FLAG_NO_SECURITY_EXTENSION = 0x00080000
         priv_key_flag_raw = int(safe_str(t["msPKI-Private-Key-Flag"]) or "0")
         if (int(t_schema) >= 2 and
@@ -549,8 +480,6 @@ def run(conn: ADConnection, output_dir: str = "."):
             t_dict["vulnerabilities"].append("ESC9")
             vuln_rows.append([t_name, "ESC9 🟡", "No Security Extension"])
 
-        # -------------------------------- ESC13
-        # Issuance policy linked to group (msPKI-RA-Policies set + ADD_TEMPLATE_CERT_ISSUANCE_POLICIES)
         ra_policies = t["msPKI-RA-Policies"].values if t["msPKI-RA-Policies"] else []
         if ra_policies and (enroll_flag_raw & CT_FLAG_ADD_TEMPLATE_CERT_ISSUANCE_POLICIES):
             finding = {
@@ -567,11 +496,9 @@ def run(conn: ADConnection, output_dir: str = "."):
             t_dict["vulnerabilities"].append("ESC13")
             vuln_rows.append([t_name, "ESC13 🟡", f"Group OID: {', '.join(ra_policies)}"])
 
-        # -------------------------------- ESC4 ACL
         acl_raw = t["nTSecurityDescriptor"].raw_values if t["nTSecurityDescriptor"] else []
         if acl_raw:
             esc4 = _parse_template_acl(acl_raw[0], t_name, domain_sid)
-            # Filter to only the dangerous rights (not just Enroll)
             dangerous = [f for f in esc4 if f["right"] != "Enroll"]
             if dangerous:
                 esc4_findings.extend(dangerous)
@@ -594,7 +521,6 @@ def run(conn: ADConnection, output_dir: str = "."):
         if t_dict["vulnerabilities"]:
             result["vulnerable_templates"].append(t_dict)
 
-    # ---- All templates table (trimmed)
     if template_rows:
         show = template_rows[:60]
         sfx = f" (showing 60 of {len(template_rows)})" if len(template_rows) > 60 else ""
@@ -604,7 +530,6 @@ def run(conn: ADConnection, output_dir: str = "."):
             show,
         ))
 
-    # ---- Vulnerable templates summary
     if vuln_rows:
         console.print()
         console.print(make_table(
@@ -623,9 +548,6 @@ def run(conn: ADConnection, output_dir: str = "."):
         print_finding("high", f"ESC4: {len(esc4_findings)} dangerous template ACE(s)",
                       "Writeable templates can be weaponised to introduce ESC1.")
 
-    # ==================================================================
-    # 3. ESC Summary banner
-    # ==================================================================
     console.print()
     if result["esc_findings"]:
         by_type: Dict[str, List] = {}
@@ -651,9 +573,6 @@ def run(conn: ADConnection, output_dir: str = "."):
         print_info("No obvious ESC misconfigurations detected "
                    "(verify manually with: certipy find -u user@domain -p pass -dc-ip <ip>)")
 
-    # ==================================================================
-    # 4. NTAuthCertificates
-    # ==================================================================
     console.print()
     ntauth_base = f"CN=NTAuthCertificates,{pki_base}"
     ntauth_entries = conn.search(
@@ -666,9 +585,6 @@ def run(conn: ADConnection, output_dir: str = "."):
     else:
         print_warn("NTAuthCertificates not found — Kerberos PKINIT authentication may not be configured.")
 
-    # ==================================================================
-    # 5. Exploitation references
-    # ==================================================================
     console.print()
     console.print(make_table(
         "Exploitation Quick Reference",
@@ -686,7 +602,6 @@ def run(conn: ADConnection, output_dir: str = "."):
         ],
     ))
 
-    # Save findings to output
     _write_adcs_report(result, output_dir)
     register_result("AD CS Enumeration", {
         "ca_count": len(result["certificate_authorities"]),
@@ -697,9 +612,6 @@ def run(conn: ADConnection, output_dir: str = "."):
     })
 
 
-# ---------------------------------------------------------------------------
-# CA ACL check for ESC7
-# ---------------------------------------------------------------------------
 def _check_ca_acl(acl_data: bytes, ca_name: str, domain_sid: str) -> List[Dict]:
     findings = []
     try:
@@ -750,9 +662,6 @@ def _check_ca_acl(acl_data: bytes, ca_name: str, domain_sid: str) -> List[Dict]:
     return findings
 
 
-# ---------------------------------------------------------------------------
-# Report writer
-# ---------------------------------------------------------------------------
 def _write_adcs_report(result: Dict, output_dir: str):
     import os, json
     os.makedirs(output_dir, exist_ok=True)
@@ -761,7 +670,6 @@ def _write_adcs_report(result: Dict, output_dir: str):
         json.dump(result, f, indent=2, default=str)
     console.print(f"\n  [bright_green]✔[/bright_green]  AD CS report → [bright_yellow]{path}[/bright_yellow]")
 
-    # Human-readable ESC findings text
     if result["esc_findings"]:
         txt_path = os.path.join(output_dir, "adcs_esc_findings.txt")
         with open(txt_path, "w") as f:
