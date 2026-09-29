@@ -56,16 +56,17 @@ BANNER = r"""
 """
 
 MODULES_AVAILABLE = {
-    "domain":      ("Domain Info & Password Policy",         "modules.domain_info"),
-    "users":       ("Users & Groups",                        "modules.users_groups"),
-    "computers":   ("Computers & Hosts",                     "modules.computers"),
-    "gpo":         ("GPO Enumeration",                       "modules.gpo"),
-    "acl":         ("ACL / DACL Analysis",                   "modules.acl_analysis"),
-    "kerberoast":  ("Kerberoasting & AS-REP Roasting",       "modules.kerberoast"),
-    "smb":         ("SMB Share Enumeration",                 "modules.smb_shares"),
-    "sessions":    ("Sessions & Logged-On Users",            "modules.sessions"),
-    "adcs":        ("AD Certificate Services (ESC1-ESC13)", "modules.adcs"),
-    "bloodhound":  ("BloodHound Data Collection",            "modules.bloodhound"),
+    "domain":      ("Domain Info & Password Policy",                  "modules.domain_info"),
+    "users":       ("Users & Groups",                                 "modules.users_groups"),
+    "computers":   ("Computers & Hosts",                              "modules.computers"),
+    "gpo":         ("GPO Enumeration",                                "modules.gpo"),
+    "acl":         ("ACL / DACL Analysis",                            "modules.acl_analysis"),
+    "kerberoast":  ("Kerberoasting & AS-REP Roasting",                "modules.kerberoast"),
+    "smb":         ("SMB Share Enumeration",                          "modules.smb_shares"),
+    "sessions":    ("Sessions & Logged-On Users",                     "modules.sessions"),
+    "adcs":        ("AD Certificate Services (ESC1-ESC13)",           "modules.adcs"),
+    "bloodhound":  ("BloodHound Data Collection",                     "modules.bloodhound"),
+    "advisories":  ("Advisories & Next-Step Recommendations (offline)","modules.advisories"),
 }
 
 ALL_MODULE_KEYS = list(MODULES_AVAILABLE.keys())

@@ -6,4 +6,4 @@ venv/
 .venv/
 .idea/
 .vscode/
-
+admap_output/
