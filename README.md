@@ -6,7 +6,7 @@
 
 ## 🔍 Overview
 
-**ADMap** is a comprehensive, modular Active Directory enumeration tool built for security professionals. It uses LDAP, Kerberos, and SMB/DCE-RPC to enumerate an Active Directory environment and surface misconfigurations, attack paths, and privilege escalation vectors.
+**ADMap** is a comprehensive, modular Active Directory enumeration tool built for security professionals to enumerate an Active Directory environment and surface misconfigurations, attack paths, and privilege escalation vectors.
 
 ```
     _    ____  __  __
